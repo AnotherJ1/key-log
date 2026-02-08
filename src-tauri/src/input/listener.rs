@@ -76,6 +76,14 @@ fn process_event(event: &Event) -> Option<InputEvent> {
             let button_name = button_to_string(&button);
             Some(InputEvent::MouseClick { button: button_name })
         }
+        EventType::Wheel { delta_y, .. } => {
+            if delta_y != 0 {
+                let button_name = if delta_y > 0 { "ScrollUp".to_string() } else { "ScrollDown".to_string() };
+                Some(InputEvent::MouseClick { button: button_name })
+            } else {
+                None
+            }
+        }
         _ => None,
     }
 }

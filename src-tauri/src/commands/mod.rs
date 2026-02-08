@@ -18,6 +18,27 @@ pub struct AppState {
 
 type SharedState = Arc<Mutex<AppState>>;
 
+/// 获取当前数据库路径
+#[tauri::command]
+pub fn get_db_path() -> Result<String, String> {
+    Ok(Database::get_current_db_path())
+}
+
+/// 设置数据库路径
+#[tauri::command]
+pub fn set_db_path(state: State<'_, SharedState>, new_path: String) -> Result<(), String> {
+    // 1. 更新配置文件
+    Database::set_db_path(&new_path).map_err(|e| e.to_string())?;
+    
+    // 2. 重新初始化数据库连接
+    let mut state_guard = state.lock().map_err(|e| e.to_string())?;
+    let new_db = Database::open_at_path(&new_path).map_err(|e| e.to_string())?;
+    state_guard.db = new_db;
+    
+    log::info!("Database re-initialized at new path: {}", new_path);
+    Ok(())
+}
+
 /// 打开数据目录
 #[tauri::command]
 pub fn open_data_dir(handle: AppHandle) -> Result<(), String> {

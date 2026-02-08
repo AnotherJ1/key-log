@@ -43,8 +43,84 @@ impl Database {
         Ok(db)
     }
 
+    /// 获取配置文件的路径
+    fn get_config_path() -> PathBuf {
+        let config_dir = dirs::config_local_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("KeyLog");
+        config_dir.join("config.json")
+    }
+
+    /// 获取当前数据库路径（供外部查询）
+    pub fn get_current_db_path() -> String {
+        Self::get_db_path().map(|p| p.to_string_lossy().to_string()).unwrap_or_default()
+    }
+
+    /// 更新数据库路径并重新连接
+    pub fn set_db_path(new_path: &str) -> Result<(), DbError> {
+        let path = PathBuf::from(new_path);
+        
+        // 1. 验证路径有效性
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        
+        // 2. 更新配置文件
+        let config_path = Self::get_config_path();
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        
+        let mut config = serde_json::Map::new();
+        if config_path.exists() {
+             if let Ok(content) = std::fs::read_to_string(&config_path) {
+                 if let Ok(serde_json::Value::Object(map)) = serde_json::from_str(&content) {
+                     config = map;
+                 }
+             }
+        }
+        
+        config.insert("db_path".to_string(), serde_json::Value::String(new_path.to_string()));
+        let content = serde_json::to_string_pretty(&config).unwrap();
+        std::fs::write(config_path, content)?;
+        
+        Ok(())
+    }
+
+    /// 创建新的数据库连接（支持指定路径）
+    pub fn open_at_path(path_str: &str) -> Result<Self, DbError> {
+        let path = PathBuf::from(path_str);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let conn = Connection::open(&path)?;
+        let db = Self { conn };
+        db.init_tables()?;
+        Ok(db)
+    }
+
     /// 获取数据库文件路径
     fn get_db_path() -> Result<PathBuf, DbError> {
+        let config_file = Self::get_config_path();
+        
+        // 尝试读取配置文件中的数据库路径
+        if config_file.exists() {
+            if let Ok(content) = std::fs::read_to_string(&config_file) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(db_path_str) = json.get("db_path").and_then(|v| v.as_str()) {
+                        let path = PathBuf::from(db_path_str);
+                        // 确保路径有效且父目录存在
+                        if let Some(parent) = path.parent() {
+                            if std::fs::create_dir_all(parent).is_ok() {
+                                return Ok(path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 默认路径
         let data_dir = dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("KeyLog");

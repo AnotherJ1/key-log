@@ -10,12 +10,16 @@ import {
   getSetting,
   setSetting,
   openDataDir,
+  getDbPath,
+  setDbPath,
   exportToCsv,
   exportToExcel
 } from "../utils/api";
-import { save } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save } from "@tauri-apps/plugin-dialog";
+// @tauri-apps/plugin-opener 导出的函数名是 openUrl
+import { openUrl } from '@tauri-apps/plugin-opener';
 // 图标已在 main.ts 全局注册
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 
 const isListening = ref(false);
 const autoStart = ref(false);
@@ -23,6 +27,7 @@ const minimizeToTray = ref(true);
 const theme = ref("dark");
 const isLoading = ref(false);
 const isInitializing = ref(true);
+const currentDbPath = ref("");
 const exportDateRange = ref<[string, string]>([
   new Date().toISOString().split('T')[0],
   new Date().toISOString().split('T')[0]
@@ -30,7 +35,7 @@ const exportDateRange = ref<[string, string]>([
 const isExporting = ref(false);
 const isExportingExcel = ref(false);
 
-const appVersion = "0.1.0";
+const appVersion = "0.2.0";
 
 // 打开数据目录
 async function handleOpenDir() {
@@ -38,6 +43,42 @@ async function handleOpenDir() {
     await openDataDir();
   } catch (error) {
     ElMessage.error("无法打开目录: " + error);
+  }
+}
+
+// 修改数据存储路径
+async function handleChangeDbPath() {
+  try {
+    const selected = await openDialog({
+      directory: true,
+      multiple: false,
+      title: "选择数据存储目录"
+    });
+    
+    if (selected) {
+      const newPath = `${selected}\\keylog.db`; // Windows path separator
+      
+      await ElMessageBox.confirm(
+        `确定要将数据存储路径修改为：\n${newPath}\n\n修改后将自动创建新数据库或加载已有数据库。`,
+        "修改存储位置",
+        {
+          confirmButtonText: "确定",
+          cancelButtonText: "取消",
+          type: "warning",
+        }
+      );
+      
+      await setDbPath(newPath);
+      currentDbPath.value = newPath;
+      ElMessage.success("数据库路径已更新，并已重新初始化连接");
+      
+      // 刷新状态以确保一切正常
+      await refreshStatus();
+    }
+  } catch (error) {
+    if (error !== "cancel") {
+      ElMessage.error("修改失败: " + error);
+    }
   }
 }
 
@@ -154,6 +195,9 @@ async function refreshStatus() {
     if (themeSetting !== null) {
       theme.value = themeSetting;
     }
+
+    // 获取当前数据库路径
+    currentDbPath.value = await getDbPath();
     
   } catch (error) {
     console.error("Failed to get status:", error);
@@ -204,6 +248,15 @@ watch(theme, async (newValue) => {
     console.error("Failed to save theme setting:", error);
   }
 });
+
+// 打开外部链接
+async function openExternalLink(url: string) {
+  try {
+    await openUrl(url);
+  } catch (error) {
+    ElMessage.error("无法打开链接: " + error);
+  }
+}
 
 onMounted(() => {
   refreshStatus();
@@ -298,9 +351,10 @@ onMounted(() => {
       <div class="setting-item">
         <div class="setting-info">
           <span class="setting-label">数据存储位置</span>
-          <span class="setting-desc">%LOCALAPPDATA%\KeyLog\keylog.db</span>
+          <span class="setting-desc">{{ currentDbPath || '正在加载...' }}</span>
         </div>
         <div class="setting-control">
+          <el-button @click="handleChangeDbPath">修改位置</el-button>
           <el-button @click="handleOpenDir">打开目录</el-button>
         </div>
       </div>
@@ -360,11 +414,11 @@ onMounted(() => {
           使用 Tauri + Vue 3 构建，所有数据本地存储，保护您的隐私。
         </p>
         <div class="about-links">
-          <el-link type="primary" :underline="false">GitHub</el-link>
+          <el-link type="primary" :underline="false" @click="openExternalLink('https://github.com/AnotherJ1/key-log')">GitHub</el-link>
           <el-divider direction="vertical" />
-          <el-link type="primary" :underline="false">问题反馈</el-link>
+          <el-link type="primary" :underline="false" @click="openExternalLink('https://github.com/AnotherJ1/key-log/issues')">问题反馈</el-link>
           <el-divider direction="vertical" />
-          <el-link type="primary" :underline="false">MIT License</el-link>
+          <el-link type="primary" :underline="false" @click="openExternalLink('https://github.com/AnotherJ1/key-log/blob/main/LICENSE')">MIT License</el-link>
         </div>
       </div>
     </div>

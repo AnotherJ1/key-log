@@ -11,6 +11,8 @@ use std::sync::{Arc, Mutex};
 use commands::AppState;
 use db::Database;
 
+use tauri::{tray::TrayIconEvent, Manager};
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 初始化日志
@@ -38,10 +40,26 @@ pub fn run() {
             commands::open_data_dir,
             commands::export_to_csv,
             commands::export_to_excel,
+            commands::get_db_path,
+            commands::set_db_path,
         ])
         .setup(|app| {
-            // 启动时自动开始监听
+            // 设置托盘事件监听
             let handle = app.handle().clone();
+            if let Some(tray) = app.tray_by_id("main") {
+                tray.on_tray_icon_event(move |tray, event| {
+                    if let TrayIconEvent::Click { .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.unminimize(); // 先取消最小化
+                            let _ = window.show();       // 再显示窗口
+                            let _ = window.set_focus();  // 最后设置焦点
+                        }
+                    }
+                });
+            }
+
+            // 启动时自动开始监听
             std::thread::spawn(move || {
                 // 短暂延迟确保应用完全初始化
                 std::thread::sleep(std::time::Duration::from_millis(500));
@@ -50,6 +68,30 @@ pub fn run() {
                 }
             });
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Resized(_) = event {
+                if window.is_minimized().unwrap_or(false) {
+                    // 检查是否启用了"最小化到托盘"
+                    // 这里我们尝试获取应用状态来读取配置
+                    // 注意：这里可能会有一些性能开销，但在窗口最小化这种低频操作中是可以接受的
+                    let app_handle = window.app_handle();
+                    let state = app_handle.state::<Arc<Mutex<AppState>>>();
+                    
+                    let should_minimize_to_tray = if let Ok(state_guard) = state.lock() {
+                        state_guard.db.get_setting("minimize_to_tray")
+                            .unwrap_or(Some("true".to_string())) // 默认为 true
+                            .map(|v| v == "true")
+                            .unwrap_or(true)
+                    } else {
+                        true // 获取锁失败时默认为 true
+                    };
+
+                    if should_minimize_to_tray {
+                        window.hide().unwrap();
+                    }
+                }
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

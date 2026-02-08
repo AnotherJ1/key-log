@@ -157,7 +157,14 @@ onUnmounted(() => {
           class="mouse-button-stat"
         >
           <span class="button-name">
-            {{ stat.button === 'Left' ? '左键' : stat.button === 'Right' ? '右键' : '中键' }}
+            {{ 
+              stat.button === 'Left' ? '左键' : 
+              stat.button === 'Right' ? '右键' : 
+              stat.button === 'Middle' ? '中键' :
+              stat.button === 'ScrollUp' ? '滚轮上' :
+              stat.button === 'ScrollDown' ? '滚轮下' :
+              stat.button 
+            }}
           </span>
           <span class="button-count">{{ formatNumber(stat.count) }}</span>
         </div>

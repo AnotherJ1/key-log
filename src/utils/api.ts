@@ -87,6 +87,15 @@ export async function setSetting(key: string, value: string): Promise<void> {
     return await invoke("set_setting", { key, value });
 }
 
+// 数据库路径 API
+export async function getDbPath(): Promise<string> {
+    return await invoke("get_db_path");
+}
+
+export async function setDbPath(newPath: string): Promise<void> {
+    return await invoke("set_db_path", { newPath });
+}
+
 // 文件操作 API
 export async function openDataDir(): Promise<void> {
     return await invoke("open_data_dir");
